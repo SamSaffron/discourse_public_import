@@ -1,0 +1,15 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    mini_sql (1.4.0)
+    sqlite3 (1.6.2-x86_64-linux)
+
+PLATFORMS
+  x86_64-linux
+
+DEPENDENCIES
+  mini_sql
+  sqlite3
+
+BUNDLED WITH
+   2.4.7
