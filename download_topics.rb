@@ -70,6 +70,8 @@ def create_schema(conn)
       created_at
     )
   SQL
+
+  conn.exec("create index idxTopic on posts(topic_id,post_number)")
 end
 
 def load_posts(conn, rows)

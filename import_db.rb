@@ -38,6 +38,23 @@ def import_topics(conn)
   categories =
     Category.pluck(:name, :id).map { |name, id| [name.downcase, id] }.to_h
 
+  puts "ensuring categories exist..."
+  # ensuring categories exist
+  conn
+    .query("SELECT DISTINCT category FROM topics")
+    .each do |row|
+      if !categories[row.category.downcase]
+        category =
+          Category.create!(
+            name: row.category,
+            user_id: -1,
+            skip_category_definition: true
+          )
+        categories[row.category.downcase] = category.id
+        puts "created #{row.category}"
+      end
+    end
+
   puts "creating topics..."
 
   created = 0
@@ -48,17 +65,7 @@ def import_topics(conn)
         slice.each do |row|
           if !Topic.exists?(row.id)
             topic =
-              conn.query(
-                "SELECT * FROM topics t JOIN posts p on p.topic_id = t.id WHERE t.id = ?",
-                row.id
-              ).first
-
-            if !categories[topic.category.downcase]
-              category = Category.create!(name: topic.category, user_id: -1)
-              categories[topic.category.downcase] = category.id
-              puts "created #{topic.category}"
-            end
-
+              conn.query("SELECT * FROM topics WHERE id = ?", row.id).first
             t =
               Topic.new(
                 id: topic.id,
@@ -78,6 +85,47 @@ def import_topics(conn)
       end
     end
 end
-# import_users(conn)
+
+def import_posts(conn)
+  puts "creating posts..."
+
+  created = 0
+  conn
+    .query("SELECT id,topic_id,post_number FROM posts order by id asc")
+    .each_slice(100) do |slice|
+      Post.transaction do
+        slice.each do |row|
+          if DB.query(
+               "SELECT 1 FROM posts where (topic_id = ? and post_number = ?)",
+               row.topic_id,
+               row.post_number
+             ).blank?
+            post = conn.query("SELECT * FROM posts WHERE id = ?", row.id).first
+
+            p =
+              Post.new(
+                raw: post.raw,
+                cooked: PrettyText.cook(post.raw),
+                user_id: post.user_id,
+                created_at: post.created_at,
+                updated_at: post.created_at,
+                post_number: post.post_number,
+                topic_id: post.topic_id
+              )
+            p.save!(validate: false)
+            print "."
+          end
+
+          created += 1
+          puts "#{created} posts created" if created % 500 == 0
+        end
+      end
+    end
+end
+
+import_users(conn)
 import_topics(conn)
-#
+import_posts(conn)
+
+Jobs::EnsureDbConsistency.new.execute(nil)
+Topic.reset_all_highest!
