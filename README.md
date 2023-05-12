@@ -28,4 +28,4 @@ Run: `ruby download_topics.rb`
 ### Importing the Sqlite db into Discourse
 
 1. Start with a blank DB
-2. ... (in progress)
+2. Run `ruby import_db.rb`
