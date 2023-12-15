@@ -104,6 +104,7 @@ def import_posts(conn)
 
             p =
               Post.new(
+                id: post.id,
                 raw: post.raw,
                 cooked: PrettyText.cook(post.raw),
                 user_id: post.user_id,
