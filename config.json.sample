@@ -3,5 +3,6 @@
   "api_key": "API_KEY",
   "topics_query_id": "QUERY_ID",
   "posts_query_id": "QUERY_ID",
+  "likes_query_id": "QUERY_ID",
   "domain": "YOUR_DISCOURSE.com"
 }
