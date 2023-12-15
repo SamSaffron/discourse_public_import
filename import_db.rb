@@ -124,12 +124,13 @@ def import_posts(conn)
 end
 
 def import_likes(conn)
-  bang
   puts "creating likes..."
 
   created = 0
   conn
-    .query("SELECT post_id,user_id,created_at FROM likes order by id asc")
+    .query(
+      "SELECT post_id,user_id,created_at FROM likes order by post_id, user_id asc"
+    )
     .each_slice(100) do |slice|
       PostAction.transaction do
         slice.each do |row|
@@ -139,15 +140,14 @@ def import_likes(conn)
                row.user_id,
                2
              ).blank?
-            p =
-              PostAction.new(
-                post_id: row.post_id,
-                user_id: row.user_id,
-                post_action_type_id: 2,
-                created_at: row.created_at,
-                updated_at: row.created_at
-              )
-            p.save!(validate: false)
+            DB.exec(
+              "INSERT INTO post_actions (post_id, user_id, post_action_type_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+              row.post_id,
+              row.user_id,
+              2,
+              row.created_at,
+              row.created_at
+            )
             print "."
           end
 
@@ -162,6 +162,12 @@ import_users(conn)
 import_topics(conn)
 import_posts(conn)
 import_likes(conn)
+
+%w[users topics posts post_actions].each { |table| DB.exec <<~SQL }
+  SELECT setval('public."#{table}_id_seq"',
+    (SELECT MAX(id) FROM public.#{table})
+  );
+SQL
 
 Jobs::EnsureDbConsistency.new.execute(nil)
 Topic.reset_all_highest!
