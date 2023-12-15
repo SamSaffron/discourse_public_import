@@ -158,16 +158,84 @@ def import_likes(conn)
     end
 end
 
+def fix_likes
+  DB.exec <<~SQL
+  INSERT INTO user_actions (
+    user_id,
+    action_type,
+    target_topic_id,
+    target_post_id,
+    acting_user_id,
+    created_at,
+    updated_at
+  )
+  SELECT pa.user_id, 1, p.topic_id, pa.post_id, pa.user_id, pa.created_at, pa.created_at
+  FROM post_actions pa
+  JOIN posts p ON p.id = pa.post_id
+  WHERE post_action_type_id = 2
+  UNION ALL
+  SELECT p.user_id, 2, p.topic_id, pa.post_id, pa.user_id, pa.created_at, pa.created_at
+  FROM post_actions pa
+  JOIN posts p ON p.id = pa.post_id
+  WHERE post_action_type_id = 2
+  ON CONFLICT DO NOTHING
+  SQL
+end
+
+def fix_sequences
+  %w[users topics posts post_actions].each { |table| DB.exec <<~SQL }
+    SELECT setval('public."#{table}_id_seq"',
+      (SELECT MAX(id) FROM public.#{table})
+    );
+  SQL
+end
+
+def fix_counts
+  DB.exec <<~SQL
+   UPDATE posts
+   SET like_count = (
+    SELECT COUNT(*)
+    FROM post_actions
+    WHERE post_actions.post_id = posts.id
+    AND post_action_type_id = 2
+   )
+  SQL
+
+  DB.exec <<~SQL
+   UPDATE topics
+   SET like_count = (
+    SELECT SUM(like_count)
+    FROM posts
+    WHERE posts.topic_id = topics.id
+    )
+  SQL
+end
+
+def fix_dates
+  DB.exec <<~SQL
+    UPDATE topics
+    SET created_at = (SELECT MIN(created_at) FROM posts WHERE posts.topic_id = topics.id)
+  SQL
+
+  DB.exec <<~SQL
+    UPDATE topics
+    SET updated_at = (SELECT MAX(created_at) FROM posts WHERE posts.topic_id = topics.id)
+  SQL
+
+  DB.exec <<~SQL
+    UPDATE topics
+    SET bumped_at = (SELECT MAX(created_at) FROM posts WHERE posts.topic_id = topics.id)
+  SQL
+end
+
 import_users(conn)
 import_topics(conn)
 import_posts(conn)
 import_likes(conn)
-
-%w[users topics posts post_actions].each { |table| DB.exec <<~SQL }
-  SELECT setval('public."#{table}_id_seq"',
-    (SELECT MAX(id) FROM public.#{table})
-  );
-SQL
+fix_likes
+fix_sequences
+fix_counts
+fix_dates
 
 Jobs::EnsureDbConsistency.new.execute(nil)
 Topic.reset_all_highest!
